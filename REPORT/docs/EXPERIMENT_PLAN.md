@@ -1,5 +1,7 @@
 # Experiment Plan
 
+This document describes the evaluation sequence for the retrieval prototype. For architecture details, see [Technical Design](TECHNICAL_DESIGN.md). For dataset notes, see [Dataset Notes](../DATASET.md).
+
 ## 1. Objective
 
 Measure how well a two-tower retrieval model improves candidate generation over simple baselines on the RetailRocket Ecommerce Dataset.
@@ -28,7 +30,20 @@ Suggested K values:
 K = 5, 10, 20, 50
 ```
 
-## 3. Experiments
+## 3. Baseline Sequence
+
+Run the experiments in this order so the results build on each other:
+
+1. Popularity baseline
+2. Item co-occurrence baseline
+3. Two-tower ID-only
+4. Two-tower + BOW history
+5. Two-tower + item metadata
+6. In-batch negatives vs sampled negatives
+7. LogQ correction on/off
+8. Brute-force vs ANN retrieval
+
+## 4. Experiments
 
 | ID | Experiment | Purpose | Expected Signal |
 | --- | --- | --- | --- |
@@ -41,7 +56,7 @@ K = 5, 10, 20, 50
 | E7 | LogQ correction on/off | Measure logged feedback bias correction | More stable ranking under popularity bias |
 | E8 | Brute-force vs ANN retrieval | Compare serving tradeoffs | ANN should reduce latency at some recall cost |
 
-## 4. Comparison Table Template
+## 5. Comparison Table Template
 
 | Model | Features | Negatives | LogQ | Recall@10 | NDCG@10 | HitRate@10 | Coverage |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -51,7 +66,7 @@ K = 5, 10, 20, 50
 | Two-tower + BOW | ID + history BOW | In-batch | No | TBD | TBD | TBD | TBD |
 | Two-tower + metadata | ID + item metadata | In-batch | Optional | TBD | TBD | TBD | TBD |
 
-## 5. Expected Learnings
+## 6. Expected Learnings
 
 - whether two-tower retrieval beats popularity and simple co-occurrence baselines
 - how much user/session history helps candidate generation
@@ -60,7 +75,7 @@ K = 5, 10, 20, 50
 - how much ANN retrieval changes serving behavior compared with exact search
 - how retrieval quality changes when the candidate set is built from precomputed item embeddings
 
-## 6. Risks
+## 7. Risks
 
 - sparse interactions may make offline gains noisy
 - popularity bias may dominate results if the dataset is not filtered carefully
@@ -68,7 +83,7 @@ K = 5, 10, 20, 50
 - time-based splits may leave limited validation examples for rare items
 - ANN settings may trade off recall against latency more than expected
 
-## 7. Fallback Plans
+## 8. Fallback Plans
 
 If an experiment does not behave as expected:
 
@@ -78,7 +93,7 @@ If an experiment does not behave as expected:
 4. remove ANN and evaluate exact brute-force retrieval first
 5. disable LogQ correction and compare the baseline learning curve
 
-## 8. Success Criteria
+## 9. Success Criteria
 
 The project is successful if it demonstrates:
 
@@ -89,7 +104,7 @@ The project is successful if it demonstrates:
 - a simple retrieval demo or API
 - clear discussion of limitations and bias effects
 
-## 9. Reporting Output
+## 10. Reporting Output
 
 Each experiment should report:
 

@@ -1,5 +1,7 @@
 # Technical Design
 
+This document explains how the retrieval system works. For the experiment sequence and metrics plan, see [Experiment Plan](EXPERIMENT_PLAN.md). For dataset specifics, see [Dataset Notes](../DATASET.md).
+
 ## 1. Overview
 
 This project implements a production-inspired two-tower retrieval system for ecommerce recommendation. The system is designed as a learning prototype for candidate generation, not a full production recommender.
@@ -14,9 +16,18 @@ The core idea is to map a user/session context and an item into the same embeddi
 - serve online queries with fast vector search or brute-force retrieval
 - evaluate retrieval quality with top-K metrics
 
-## 3. Data Pipeline
+## 3. Architecture Summary
 
-### 3.1 Raw Data
+The prototype follows a simple offline/online split:
+
+- offline preprocessing builds implicit-feedback training data and item metadata
+- offline training learns user and item embeddings
+- offline indexing precomputes item vectors and builds a retrieval index
+- online serving embeds the query context and returns top-K candidates
+
+## 4. Data Pipeline
+
+### 4.1 Raw Data
 
 Raw data is downloaded locally to:
 
@@ -32,7 +43,7 @@ item_properties.csv
 category_tree.csv
 ```
 
-### 3.2 Preprocessing
+### 4.2 Preprocessing
 
 The preprocessing pipeline should:
 
@@ -44,7 +55,7 @@ The preprocessing pipeline should:
 6. generate item metadata tables
 7. create training examples for retrieval learning
 
-### 3.3 Feature Views
+### 4.3 Feature Views
 
 The model can use two feature views:
 
@@ -53,9 +64,9 @@ The model can use two feature views:
 
 The design should keep feature construction lightweight so the prototype stays reproducible.
 
-## 4. Model Architecture
+## 5. Model Architecture
 
-### 4.1 Two-Tower Retrieval
+### 5.1 Two-Tower Retrieval
 
 The model has two encoders:
 
@@ -68,7 +79,7 @@ The towers output vectors in a shared space. Retrieval uses dot product similari
 score(user, item) = user_embedding · item_embedding
 ```
 
-### 4.2 User Tower
+### 5.2 User Tower
 
 The user tower can start simple and grow incrementally:
 
@@ -78,7 +89,7 @@ The user tower can start simple and grow incrementally:
 
 This keeps the prototype aligned with common retrieval systems while remaining easy to debug.
 
-### 4.3 Item Tower
+### 5.3 Item Tower
 
 The item tower can include:
 
@@ -86,7 +97,7 @@ The item tower can include:
 - category embedding
 - optional item property features
 
-### 4.4 Training Objective
+### 5.4 Training Objective
 
 Recommended training options:
 
@@ -96,9 +107,9 @@ Recommended training options:
 
 LogQ correction is useful because logged feedback is biased toward popular items and exposure effects.
 
-## 5. Retrieval Serving Design
+## 6. Retrieval Serving Design
 
-### 5.1 Offline Indexing
+### 6.1 Offline Indexing
 
 After training, the item tower is run over the full item catalog to precompute item embeddings.
 
@@ -108,7 +119,7 @@ Artifacts produced offline:
 - item ID to vector mapping
 - ANN index or brute-force lookup structure
 
-### 5.2 Online Query Flow
+### 6.2 Online Query Flow
 
 The online path should be simple:
 
@@ -117,7 +128,7 @@ The online path should be simple:
 3. search the item embedding space
 4. return top-K candidate items with scores
 
-### 5.3 Vector Search
+### 6.3 Vector Search
 
 The prototype can use either:
 
@@ -126,7 +137,7 @@ The prototype can use either:
 
 If ANN is used, ScaNN or HNSW-style indexing is a good fit for the project scope.
 
-## 6. Retrieval-Ranking Boundary
+## 7. Retrieval-Ranking Boundary
 
 This project focuses on candidate generation only.
 
@@ -134,7 +145,7 @@ The retriever returns a compact candidate set that could later be passed to a ra
 
 The main learning objective is to understand retrieval-ranking interaction, not to implement the full downstream stack.
 
-## 7. Evaluation
+## 8. Evaluation
 
 Retrieval quality should be evaluated offline with:
 
@@ -149,7 +160,7 @@ Additional analysis can include:
 - long-tail item performance
 - example recommendations by user history type
 
-## 8. Limitations
+## 9. Limitations
 
 This prototype intentionally avoids several production concerns:
 

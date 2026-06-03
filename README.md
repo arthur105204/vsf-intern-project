@@ -74,6 +74,7 @@ REPORT/
   PRD.md
   DATASET.md
   docs/
+    README.md
     TECHNICAL_DESIGN.md
     EXPERIMENT_PLAN.md
 ```
@@ -120,6 +121,7 @@ Adjust the exact commands to match the implementation in this repository.
 
 ## Documentation
 
+- [Docs Index](REPORT/docs/README.md)
 - [Technical Design](REPORT/docs/TECHNICAL_DESIGN.md)
 - [Experiment Plan](REPORT/docs/EXPERIMENT_PLAN.md)
 - [Dataset Notes](REPORT/DATASET.md)
