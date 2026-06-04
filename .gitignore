@@ -27,4 +27,5 @@ data/processed/splits/*.json
 
 .env
 __pycache__/
+.pytest_cache/
 .ipynb_checkpoints/
