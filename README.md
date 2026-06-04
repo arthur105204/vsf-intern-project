@@ -88,12 +88,30 @@ REPORT/
 5. Export item embeddings and build the ANN or brute-force retrieval index.
 6. Start the demo or API and query recommendations for a visitor/session.
 
-Typical commands will look like this:
+## Verified Phase 1 Commands
+
+The following commands were run successfully in this repository:
 
 ```bash
 # download raw data
 kaggle datasets download -d retailrocket/ecommerce-dataset -p data/raw/retailrocket --unzip
 
+# inventory raw files
+python scripts/inventory_data.py --input data/raw/retailrocket --out data/inventory.json
+
+# prepare dataset
+python scripts/prepare_dataset.py --raw data/raw --out data/processed/dataset.parquet
+
+# generate EDA summary
+python scripts/eda.py --input data/processed/dataset.parquet --out reports/eda_summary.md
+
+# create chronological splits
+python scripts/split_dataset.py --input data/processed/dataset.parquet --out_dir data/processed/splits --min_gap_seconds 0
+```
+
+Typical commands will look like this:
+
+```bash
 # train retrieval model
 python -m src.train_two_tower
 

@@ -1,0 +1,8 @@
+{
+  "project": "two-tower-retailrocket",
+  "data_path": "data/raw/retailrocket/",
+  "k_values": [5, 10, 20, 50],
+  "env": "local",
+  "auto_mode": false,
+  "git_ignore_data": true
+}
