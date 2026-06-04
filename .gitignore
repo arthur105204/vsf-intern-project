@@ -12,10 +12,10 @@ data/processed/splits/*.json
 !reports/*.csv
 !reports/*.json
 
-models/
-indexes/
-index/
-artifacts/
+/models/
+/indexes/
+/index/
+/artifacts/
 *.pkl
 *.pt
 *.onnx
