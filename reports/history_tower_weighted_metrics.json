@@ -1,0 +1,237 @@
+{
+  "baseline_comparison": {
+    "test": {
+      "10": {
+        "hit_rate_at_k": -0.005040730029553034,
+        "ndcg_at_k": -0.0029726890935217083,
+        "recall_at_k": -0.006137775237883777
+      },
+      "20": {
+        "hit_rate_at_k": -0.009076782832661482,
+        "ndcg_at_k": -0.003827295642122849,
+        "recall_at_k": -0.00925754711194765
+      },
+      "5": {
+        "hit_rate_at_k": -0.004294126729991583,
+        "ndcg_at_k": -0.0025731740851179376,
+        "recall_at_k": -0.004978355983677666
+      },
+      "50": {
+        "hit_rate_at_k": -0.01817024509400649,
+        "ndcg_at_k": -0.005407068165981759,
+        "recall_at_k": -0.016916716492149483
+      }
+    },
+    "validation": {
+      "10": {
+        "hit_rate_at_k": -0.0027637256213722764,
+        "ndcg_at_k": -0.001836627878969246,
+        "recall_at_k": -0.005177395665780699
+      },
+      "20": {
+        "hit_rate_at_k": -0.006456741275939624,
+        "ndcg_at_k": -0.0027098030867622252,
+        "recall_at_k": -0.008496158360804957
+      },
+      "5": {
+        "hit_rate_at_k": -0.002611586418691184,
+        "ndcg_at_k": -0.0015148055171654339,
+        "recall_at_k": -0.004226533325345895
+      },
+      "50": {
+        "hit_rate_at_k": -0.015691257781090914,
+        "ndcg_at_k": -0.004395448035972994,
+        "recall_at_k": -0.01694043766923254
+      }
+    }
+  },
+  "config": {
+    "batch_size": 512,
+    "device": "cpu",
+    "embedding_dim": 32,
+    "epochs": 1,
+    "eval_user_limit": 10000,
+    "learning_rate": 0.001,
+    "max_history_length": 20,
+    "min_item_interactions": 2,
+    "min_user_interactions": 2,
+    "train_limit": null,
+    "vocab_from_effective_train": true
+  },
+  "experiment": "two_tower_history_query",
+  "id_only_comparison": {
+    "test": {
+      "10": {
+        "hit_rate_at_k": 0.0021,
+        "ndcg_at_k": 0.0005467206317930146,
+        "recall_at_k": 0.0006198907558129447
+      },
+      "20": {
+        "hit_rate_at_k": 0.0021000000000000003,
+        "ndcg_at_k": 0.0005665103556785751,
+        "recall_at_k": 0.0007861406334774874
+      },
+      "5": {
+        "hit_rate_at_k": 0.0015,
+        "ndcg_at_k": 0.0004799084490687865,
+        "recall_at_k": 0.0004182752803745327
+      },
+      "50": {
+        "hit_rate_at_k": 0.0028000000000000004,
+        "ndcg_at_k": 0.0006561714854148291,
+        "recall_at_k": 0.0012259556696039117
+      }
+    },
+    "validation": {
+      "10": {
+        "hit_rate_at_k": 0.0031,
+        "ndcg_at_k": 0.0012811253618450569,
+        "recall_at_k": 0.0015880394595034816
+      },
+      "20": {
+        "hit_rate_at_k": 0.0045000000000000005,
+        "ndcg_at_k": 0.0014426990811066893,
+        "recall_at_k": 0.00221286778106091
+      },
+      "5": {
+        "hit_rate_at_k": 0.0024,
+        "ndcg_at_k": 0.0012265106955742049,
+        "recall_at_k": 0.0012969511247585982
+      },
+      "50": {
+        "hit_rate_at_k": 0.0055000000000000005,
+        "ndcg_at_k": 0.0016693679667024526,
+        "recall_at_k": 0.0030392536509792445
+      }
+    }
+  },
+  "test": {
+    "coverage": {
+      "eval_user_history_coverage": 0.0628,
+      "eval_users_with_usable_history": 628,
+      "ground_truth_item_vocab_coverage": 0.7348255973633617,
+      "ground_truth_items_in_vocab_count": 10702,
+      "ground_truth_unique_item_count": 14564,
+      "known_item_coverage": 0.8032531517171424,
+      "known_item_row_count": 22173
+    },
+    "metrics": {
+      "10": {
+        "hit_rate_at_k": 0.0028,
+        "ndcg_at_k": 0.000767766177654676,
+        "recall_at_k": 0.0009263617207148251
+      },
+      "20": {
+        "hit_rate_at_k": 0.0037,
+        "ndcg_at_k": 0.0008672370051389314,
+        "recall_at_k": 0.0014126678399560976
+      },
+      "5": {
+        "hit_rate_at_k": 0.0018,
+        "ndcg_at_k": 0.0006531676432004309,
+        "recall_at_k": 0.0005204957553377674
+      },
+      "50": {
+        "hit_rate_at_k": 0.0057,
+        "ndcg_at_k": 0.0010408678999184523,
+        "recall_at_k": 0.0022805114589907667
+      }
+    },
+    "num_users": 10000
+  },
+  "training_diagnostics": {
+    "max_history_length": 20,
+    "min_item_interactions": 2,
+    "min_user_interactions": 2,
+    "model_items_in_vocab": 100648,
+    "train_rows_used": 1355957,
+    "unique_train_items_used": 100648,
+    "unique_train_users_used": 319045,
+    "use_event_weights_in_history": true,
+    "users_with_non_empty_train_history": 305553,
+    "vocab_from_effective_train": true
+  },
+  "training_loss_history": [
+    5.583500058932681
+  ],
+  "unweighted_history_comparison": {
+    "test": {
+      "10": {
+        "hit_rate_at_k": 0.0005,
+        "ndcg_at_k": 0.0001304714483796696,
+        "recall_at_k": 8.935073395619126e-05
+      },
+      "20": {
+        "hit_rate_at_k": 0.00010000000000000026,
+        "ndcg_at_k": 8.599052168945431e-05,
+        "recall_at_k": 8.73119758897044e-05
+      },
+      "5": {
+        "hit_rate_at_k": 0.0006000000000000001,
+        "ndcg_at_k": 0.00016191977672404744,
+        "recall_at_k": 0.00014230183738275732
+      },
+      "50": {
+        "hit_rate_at_k": 0.00020000000000000052,
+        "ndcg_at_k": 9.041163495065476e-05,
+        "recall_at_k": 0.0001401702707902893
+      }
+    },
+    "validation": {
+      "10": {
+        "hit_rate_at_k": -0.0005000000000000004,
+        "ndcg_at_k": -0.00012654844212393163,
+        "recall_at_k": -6.794998949537223e-05
+      },
+      "20": {
+        "hit_rate_at_k": -0.0006999999999999992,
+        "ndcg_at_k": -0.00010679243538157463,
+        "recall_at_k": -2.4757835453596746e-05
+      },
+      "5": {
+        "hit_rate_at_k": -0.0005999999999999998,
+        "ndcg_at_k": -0.00016849031417954879,
+        "recall_at_k": 4.7497579893373415e-05
+      },
+      "50": {
+        "hit_rate_at_k": -0.0006999999999999992,
+        "ndcg_at_k": -0.00012350667408740504,
+        "recall_at_k": -0.00011630839387481544
+      }
+    }
+  },
+  "validation": {
+    "coverage": {
+      "eval_user_history_coverage": 0.1088,
+      "eval_users_with_usable_history": 1088,
+      "ground_truth_item_vocab_coverage": 0.77576979217349,
+      "ground_truth_items_in_vocab_count": 11161,
+      "ground_truth_unique_item_count": 14387,
+      "known_item_coverage": 0.8506890440192426,
+      "known_item_row_count": 23519
+    },
+    "metrics": {
+      "10": {
+        "hit_rate_at_k": 0.0055,
+        "ndcg_at_k": 0.0018951503916466584,
+        "recall_at_k": 0.002359366809022868
+      },
+      "20": {
+        "hit_rate_at_k": 0.008,
+        "ndcg_at_k": 0.002232322729116512,
+        "recall_at_k": 0.003544196632646242
+      },
+      "5": {
+        "hit_rate_at_k": 0.0039,
+        "ndcg_at_k": 0.0017018103488568074,
+        "recall_at_k": 0.0017547982785797245
+      },
+      "50": {
+        "hit_rate_at_k": 0.0114,
+        "ndcg_at_k": 0.002653145323890575,
+        "recall_at_k": 0.005290220408572038
+      }
+    },
+    "num_users": 10000
+  }
+}

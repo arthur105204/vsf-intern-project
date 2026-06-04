@@ -53,6 +53,7 @@ def write_training_report(path: Path, summary: dict, history: list[float]) -> No
         f.write(f"- Min user interactions: {summary['min_user_interactions']}\n")
         f.write(f"- Min item interactions: {summary['min_item_interactions']}\n")
         f.write(f"- Max history length: {summary['max_history_length']}\n")
+        f.write(f"- Use event weights in history: {summary['use_event_weights_in_history']}\n")
         f.write(f"- Training loss history: {history}\n")
 
 
@@ -71,6 +72,7 @@ def main():
     parser.add_argument("--min_user_interactions", type=int, default=2)
     parser.add_argument("--min_item_interactions", type=int, default=2)
     parser.add_argument("--max_history_length", type=int, default=20)
+    parser.add_argument("--use_event_weights_in_history", action="store_true")
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
 
@@ -93,6 +95,7 @@ def main():
             "min_user_interactions": args.min_user_interactions,
             "min_item_interactions": args.min_item_interactions,
             "max_history_length": args.max_history_length,
+            "use_event_weights_in_history": bool(args.use_event_weights_in_history),
         }
     )
 
@@ -109,6 +112,7 @@ def main():
         min_user_interactions=args.min_user_interactions,
         min_item_interactions=args.min_item_interactions,
         max_history_length=args.max_history_length,
+        use_event_weights_in_history=bool(args.use_event_weights_in_history),
         effective_train_rows=train_summary["train_rows_used"],
         effective_train_users=train_summary["unique_train_users_used"],
         effective_train_items=train_summary["unique_train_items_used"],
@@ -121,6 +125,7 @@ def main():
         vocabs,
         batch_size=config.batch_size,
         max_history_length=config.max_history_length,
+        use_event_weights=config.use_event_weights_in_history,
     )
     model = HistoryQueryTwoTowerRetrievalModel(vocabs.num_items, embedding_dim=config.embedding_dim)
     history = train_history_two_tower(

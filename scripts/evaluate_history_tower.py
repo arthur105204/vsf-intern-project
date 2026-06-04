@@ -17,9 +17,9 @@ if str(ROOT) not in sys.path:
 from src.evaluation.metrics import hit_rate_at_k, ndcg_at_k, recall_at_k
 from src.models.baselines import build_ground_truth, build_seen_items_for_users
 from src.models.two_tower import (
-    build_eval_history_tensor,
+    build_eval_history_tensors,
     build_item_embedding_matrix,
-    build_train_history_map,
+    build_train_history_maps,
     load_checkpoint,
     prepare_training_frame,
     recommend_top_k_for_history,
@@ -100,6 +100,7 @@ def evaluate_split(
     split_df: pd.DataFrame,
     effective_train_df: pd.DataFrame,
     history_map: dict[str, list[int]],
+    history_weight_map: dict[str, list[float]],
     k_values: list[int],
     eval_user_limit: int | None,
     max_history_length: int | None,
@@ -111,7 +112,12 @@ def evaluate_split(
     ground_truth = {user_id: ground_truth[user_id] for user_id in eval_user_ids if user_id in ground_truth}
     eval_df = eval_df[eval_df["visitorid"].isin(eval_user_ids)].reset_index(drop=True)
     seen_items_by_user = build_seen_items_for_users(effective_train_df, eval_user_ids)
-    history_tensor = build_eval_history_tensor(eval_user_ids, history_map, max_history_length=max_history_length)
+    history_tensor, history_weight_tensor = build_eval_history_tensors(
+        eval_user_ids,
+        history_map,
+        history_weight_map,
+        max_history_length=max_history_length,
+    )
     item_matrix = build_item_embedding_matrix(model, device=device)
     coverage = _compute_coverage_diagnostics(eval_df, ground_truth, vocabs, history_map)
 
@@ -121,6 +127,7 @@ def evaluate_split(
             model,
             vocabs,
             history_item_indices=history_tensor[index],
+            history_event_weights=history_weight_tensor[index],
             k=max(k_values),
             item_embedding_matrix=item_matrix,
             seen_items=seen_items_by_user.get(str(user_id), set()),
@@ -161,6 +168,7 @@ def build_training_diagnostics(config, vocabs) -> dict:
         "min_user_interactions": config.min_user_interactions,
         "min_item_interactions": config.min_item_interactions,
         "max_history_length": config.max_history_length,
+        "use_event_weights_in_history": config.use_event_weights_in_history,
     }
 
 
@@ -172,6 +180,7 @@ def write_report(
     test: dict,
     popularity: dict,
     id_only: dict,
+    unweighted_history: dict,
     k_values: list[int],
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -188,6 +197,7 @@ def write_report(
         f.write(f"- Min user interactions: {training_diagnostics['min_user_interactions']}\n")
         f.write(f"- Min item interactions: {training_diagnostics['min_item_interactions']}\n")
         f.write(f"- Max history length: {training_diagnostics['max_history_length']}\n")
+        f.write(f"- Use event weights in history: {training_diagnostics['use_event_weights_in_history']}\n")
         f.write(f"- Training loss history: {history}\n\n")
 
         for split_name, split_metrics in [("Validation", validation), ("Test", test)]:
@@ -210,25 +220,41 @@ def write_report(
             f.write(f"## {split_name} metrics\n\n")
             popularity_metrics = popularity.get(split_name.lower(), {}).get("metrics", {})
             id_only_metrics = id_only.get(split_name.lower(), {}).get("metrics", {})
+            unweighted_metrics = unweighted_history.get(split_name.lower(), {}).get("metrics", {})
             for k in k_values:
                 row = split_metrics["metrics"][str(k)]
                 pop = popularity_metrics.get(str(k), {})
                 base = id_only_metrics.get(str(k), {})
+                unweighted = unweighted_metrics.get(str(k), {})
                 f.write(
                     f"- K={k}: Recall@K={row['recall_at_k']:.6f} "
-                    f"(popularity {pop.get('recall_at_k', 0.0):.6f}, id-only {base.get('recall_at_k', 0.0):.6f}), "
+                    f"(popularity {pop.get('recall_at_k', 0.0):.6f}, id-only {base.get('recall_at_k', 0.0):.6f}, "
+                    f"unweighted history {unweighted.get('recall_at_k', 0.0):.6f}), "
                     f"HitRate@K={row['hit_rate_at_k']:.6f} "
-                    f"(popularity {pop.get('hit_rate_at_k', 0.0):.6f}, id-only {base.get('hit_rate_at_k', 0.0):.6f}), "
+                    f"(popularity {pop.get('hit_rate_at_k', 0.0):.6f}, id-only {base.get('hit_rate_at_k', 0.0):.6f}, "
+                    f"unweighted history {unweighted.get('hit_rate_at_k', 0.0):.6f}), "
                     f"NDCG@K={row['ndcg_at_k']:.6f} "
-                    f"(popularity {pop.get('ndcg_at_k', 0.0):.6f}, id-only {base.get('ndcg_at_k', 0.0):.6f})\n"
+                    f"(popularity {pop.get('ndcg_at_k', 0.0):.6f}, id-only {base.get('ndcg_at_k', 0.0):.6f}, "
+                    f"unweighted history {unweighted.get('ndcg_at_k', 0.0):.6f})\n"
                 )
             f.write("\n")
 
+        history_validation = validation["metrics"]["50"]
         history_test = test["metrics"]["50"]
         popularity_test = popularity.get("test", {}).get("metrics", {}).get("50", {})
         id_only_test = id_only.get("test", {}).get("metrics", {}).get("50", {})
+        unweighted_validation = unweighted_history.get("validation", {}).get("metrics", {}).get("50", {})
+        unweighted_test = unweighted_history.get("test", {}).get("metrics", {}).get("50", {})
         improved_over_id_only = all(
             history_test.get(metric_name, 0.0) > id_only_test.get(metric_name, 0.0)
+            for metric_name in ["recall_at_k", "hit_rate_at_k", "ndcg_at_k"]
+        )
+        improved_over_unweighted_validation = all(
+            history_validation.get(metric_name, 0.0) > unweighted_validation.get(metric_name, 0.0)
+            for metric_name in ["recall_at_k", "hit_rate_at_k", "ndcg_at_k"]
+        )
+        improved_over_unweighted = all(
+            history_test.get(metric_name, 0.0) > unweighted_test.get(metric_name, 0.0)
             for metric_name in ["recall_at_k", "hit_rate_at_k", "ndcg_at_k"]
         )
 
@@ -242,6 +268,20 @@ def write_report(
             f.write(
                 "History features do not yet improve over the ID-only tower consistently, "
                 "so the current history formulation is not strong enough to carry forward unchanged.\n"
+            )
+
+        if improved_over_unweighted and improved_over_unweighted_validation:
+            f.write(
+                "\nEvent-weighted history pooling improves over the unweighted history tower on both validation and test.\n"
+            )
+        elif improved_over_unweighted:
+            f.write(
+                "\nEvent-weighted history pooling improves over the unweighted history tower on the capped test slice, "
+                "but not consistently on validation.\n"
+            )
+        else:
+            f.write(
+                "\nEvent-weighted history pooling does not improve over the unweighted history tower consistently on the capped test slice.\n"
             )
 
         if all(
@@ -265,6 +305,10 @@ def main():
         "--id_only_metrics_json",
         default="outputs/experiments/two_tower_id_only_filtered_full/metrics.json",
     )
+    parser.add_argument(
+        "--unweighted_history_metrics_json",
+        default="outputs/experiments/history_tower_dev/metrics.json",
+    )
     parser.add_argument("--out_json", default="outputs/experiments/history_tower_dev/metrics.json")
     parser.add_argument("--out_report", default="reports/history_tower_dev.md")
     parser.add_argument("--k_values", nargs="*", type=int, default=[5, 10, 20, 50])
@@ -285,13 +329,15 @@ def main():
         min_user_interactions=config.min_user_interactions,
         min_item_interactions=config.min_item_interactions,
     )
-    history_map = build_train_history_map(
+    history_map, history_weight_map = build_train_history_maps(
         effective_train_df,
         vocabs,
         max_history_length=config.max_history_length,
+        use_event_weights=config.use_event_weights_in_history,
     )
     popularity = _load_json(Path(args.baseline_json))
     id_only_payload = _load_json(Path(args.id_only_metrics_json))
+    unweighted_history_payload = _load_json(Path(args.unweighted_history_metrics_json))
     training_diagnostics = build_training_diagnostics(config, vocabs)
 
     print("Evaluating validation split...", flush=True)
@@ -301,6 +347,7 @@ def main():
         val_df,
         effective_train_df,
         history_map,
+        history_weight_map,
         args.k_values,
         args.eval_user_limit,
         config.max_history_length,
@@ -313,6 +360,7 @@ def main():
         test_df,
         effective_train_df,
         history_map,
+        history_weight_map,
         args.k_values,
         args.eval_user_limit,
         config.max_history_length,
@@ -348,6 +396,10 @@ def main():
             "test": compare_against_reference(test, popularity, "test", args.k_values),
         },
         "id_only_comparison": id_only_comparison,
+        "unweighted_history_comparison": {
+            "validation": compare_against_reference(validation, unweighted_history_payload, "validation", args.k_values),
+            "test": compare_against_reference(test, unweighted_history_payload, "test", args.k_values),
+        },
     }
 
     out_json = Path(args.out_json)
@@ -356,7 +408,17 @@ def main():
         json.dump(payload, f, indent=2, sort_keys=True)
 
     out_report = Path(args.out_report)
-    write_report(out_report, training_diagnostics, history, validation, test, popularity, id_only_payload, args.k_values)
+    write_report(
+        out_report,
+        training_diagnostics,
+        history,
+        validation,
+        test,
+        popularity,
+        id_only_payload,
+        unweighted_history_payload,
+        args.k_values,
+    )
 
     print(f"Wrote metrics to {out_json}")
     print(f"Wrote report to {out_report}")

@@ -13,6 +13,8 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
+from src.models.baselines import DEFAULT_EVENT_WEIGHTS
+
 
 UNK_TOKEN = "<unk>"
 
@@ -31,6 +33,7 @@ class TwoTowerConfig:
     min_user_interactions: Optional[int] = None
     min_item_interactions: Optional[int] = None
     max_history_length: Optional[int] = 20
+    use_event_weights_in_history: bool = False
     effective_train_rows: Optional[int] = None
     effective_train_users: Optional[int] = None
     effective_train_items: Optional[int] = None
@@ -120,6 +123,13 @@ def _encode_item_sequence(item_ids: Iterable, vocabs: Vocabularies, max_history_
     return encoded
 
 
+def _event_weight_for_value(event_value, event_weights: Optional[Dict[str, float]] = None) -> float:
+    weights = event_weights or DEFAULT_EVENT_WEIGHTS
+    if pd.isna(event_value):
+        return 1.0
+    return float(weights.get(str(event_value).lower(), 1.0))
+
+
 class InteractionDataset(Dataset):
     def __init__(self, users: torch.Tensor, items: torch.Tensor):
         self.users = users
@@ -177,29 +187,56 @@ class HistoryQueryTwoTowerRetrievalModel(nn.Module):
         with torch.no_grad():
             self.item_embedding.weight[0].zero_()
 
-    def aggregate_history(self, history_item_indices: torch.Tensor) -> torch.Tensor:
+    def aggregate_history(
+        self,
+        history_item_indices: torch.Tensor,
+        history_event_weights: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         history_embeddings = self.item_embedding(history_item_indices)
-        history_mask = history_item_indices.ne(0).unsqueeze(-1)
-        masked_embeddings = history_embeddings * history_mask
-        counts = history_mask.sum(dim=1).clamp(min=1)
+        history_mask = history_item_indices.ne(0)
+        if history_event_weights is None:
+            weights = history_mask.to(dtype=history_embeddings.dtype)
+        else:
+            weights = history_event_weights.to(dtype=history_embeddings.dtype) * history_mask.to(dtype=history_embeddings.dtype)
+        masked_embeddings = history_embeddings * weights.unsqueeze(-1)
+        counts = weights.sum(dim=1, keepdim=True).clamp(min=1.0)
         return masked_embeddings.sum(dim=1) / counts
 
-    def encode_queries(self, history_item_indices: torch.Tensor) -> torch.Tensor:
-        return self.aggregate_history(history_item_indices)
+    def encode_queries(
+        self,
+        history_item_indices: torch.Tensor,
+        history_event_weights: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        return self.aggregate_history(history_item_indices, history_event_weights=history_event_weights)
 
     def encode_items(self, item_indices: torch.Tensor) -> torch.Tensor:
         return self.item_embedding(item_indices)
 
-    def forward(self, history_item_indices: torch.Tensor, item_indices: torch.Tensor) -> torch.Tensor:
-        return self.score_pairs(history_item_indices, item_indices)
+    def forward(
+        self,
+        history_item_indices: torch.Tensor,
+        item_indices: torch.Tensor,
+        history_event_weights: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        return self.score_pairs(history_item_indices, item_indices, history_event_weights=history_event_weights)
 
-    def score_pairs(self, history_item_indices: torch.Tensor, item_indices: torch.Tensor) -> torch.Tensor:
-        query_vectors = self.encode_queries(history_item_indices)
+    def score_pairs(
+        self,
+        history_item_indices: torch.Tensor,
+        item_indices: torch.Tensor,
+        history_event_weights: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        query_vectors = self.encode_queries(history_item_indices, history_event_weights=history_event_weights)
         item_vectors = self.encode_items(item_indices)
         return torch.sum(query_vectors * item_vectors, dim=-1)
 
-    def pairwise_logits(self, history_item_indices: torch.Tensor, item_indices: torch.Tensor) -> torch.Tensor:
-        query_vectors = self.encode_queries(history_item_indices)
+    def pairwise_logits(
+        self,
+        history_item_indices: torch.Tensor,
+        item_indices: torch.Tensor,
+        history_event_weights: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        query_vectors = self.encode_queries(history_item_indices, history_event_weights=history_event_weights)
         item_vectors = self.encode_items(item_indices)
         return query_vectors @ item_vectors.T
 
@@ -244,23 +281,47 @@ def count_users_with_non_empty_history(train_df: pd.DataFrame) -> int:
     return int((counts >= 2).sum())
 
 
-def build_train_history_map(
+def build_train_history_maps(
     train_df: pd.DataFrame,
     vocabs: Vocabularies,
     max_history_length: Optional[int] = None,
-) -> Dict[str, List[int]]:
+    use_event_weights: bool = False,
+    event_weights: Optional[Dict[str, float]] = None,
+) -> Tuple[Dict[str, List[int]], Dict[str, List[float]]]:
     _validate_max_history_length(max_history_length)
 
     if train_df.empty:
-        return {}
+        return {}, {}
 
     ordered_df = train_df.copy()
     if "timestamp" in ordered_df.columns:
         ordered_df = ordered_df.sort_values(["timestamp", "visitorid", "itemid"], kind="stable")
 
     history_map: Dict[str, List[int]] = {}
+    history_weight_map: Dict[str, List[float]] = {}
     for user_id, frame in ordered_df.groupby("visitorid", sort=False):
-        history_map[str(user_id)] = _encode_item_sequence(frame["itemid"].tolist(), vocabs, max_history_length=max_history_length)
+        item_sequence = []
+        weight_sequence = []
+        for item_value, event_value in zip(frame["itemid"].tolist(), frame.get("event", pd.Series([None] * len(frame))).tolist()):
+            item_index = vocabs.item_to_idx.get(_standardize_id(item_value), 0)
+            if item_index == 0:
+                continue
+            item_sequence.append(item_index)
+            weight_sequence.append(_event_weight_for_value(event_value, event_weights) if use_event_weights else 1.0)
+        if max_history_length is not None:
+            item_sequence = item_sequence[-int(max_history_length):]
+            weight_sequence = weight_sequence[-int(max_history_length):]
+        history_map[str(user_id)] = item_sequence
+        history_weight_map[str(user_id)] = weight_sequence
+    return history_map, history_weight_map
+
+
+def build_train_history_map(
+    train_df: pd.DataFrame,
+    vocabs: Vocabularies,
+    max_history_length: Optional[int] = None,
+) -> Dict[str, List[int]]:
+    history_map, _ = build_train_history_maps(train_df, vocabs, max_history_length=max_history_length)
     return history_map
 
 
@@ -286,6 +347,31 @@ def _history_to_padded_tensor(history_items: List[List[int]], max_history_length
     return tensor
 
 
+def _history_weights_to_padded_tensor(
+    history_weights: List[List[float]],
+    max_history_length: Optional[int],
+) -> torch.Tensor:
+    _validate_max_history_length(max_history_length)
+
+    if not history_weights:
+        width = int(max_history_length or 0)
+        return torch.zeros((0, width), dtype=torch.float32)
+
+    effective_width = max((len(items) for items in history_weights), default=0)
+    if max_history_length is not None:
+        effective_width = min(effective_width, int(max_history_length))
+
+    if effective_width == 0:
+        effective_width = int(max_history_length or 1)
+
+    tensor = torch.zeros((len(history_weights), effective_width), dtype=torch.float32)
+    for row_index, weights in enumerate(history_weights):
+        trimmed = weights[-effective_width:]
+        if trimmed:
+            tensor[row_index, -len(trimmed):] = torch.tensor(trimmed, dtype=torch.float32)
+    return tensor
+
+
 def build_eval_history_tensor(
     user_ids: Iterable,
     history_map: Dict[str, List[int]],
@@ -293,6 +379,20 @@ def build_eval_history_tensor(
 ) -> torch.Tensor:
     history_items = [history_map.get(_standardize_id(user_id), []) for user_id in user_ids]
     return _history_to_padded_tensor(history_items, max_history_length=max_history_length)
+
+
+def build_eval_history_tensors(
+    user_ids: Iterable,
+    history_map: Dict[str, List[int]],
+    history_weight_map: Dict[str, List[float]],
+    max_history_length: Optional[int],
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    history_items = [history_map.get(_standardize_id(user_id), []) for user_id in user_ids]
+    history_weights = [history_weight_map.get(_standardize_id(user_id), []) for user_id in user_ids]
+    return (
+        _history_to_padded_tensor(history_items, max_history_length=max_history_length),
+        _history_weights_to_padded_tensor(history_weights, max_history_length=max_history_length),
+    )
 
 
 def build_training_loader(
@@ -315,15 +415,16 @@ def build_training_loader(
 
 
 class HistoryInteractionDataset(Dataset):
-    def __init__(self, histories: torch.Tensor, items: torch.Tensor):
+    def __init__(self, histories: torch.Tensor, history_weights: torch.Tensor, items: torch.Tensor):
         self.histories = histories
+        self.history_weights = history_weights
         self.items = items
 
     def __len__(self) -> int:
         return int(self.items.shape[0])
 
     def __getitem__(self, index: int):
-        return self.histories[index], self.items[index]
+        return self.histories[index], self.history_weights[index], self.items[index]
 
 
 def build_history_training_loader(
@@ -331,6 +432,8 @@ def build_history_training_loader(
     vocabs: Vocabularies,
     batch_size: int,
     max_history_length: Optional[int] = 20,
+    use_event_weights: bool = False,
+    event_weights: Optional[Dict[str, float]] = None,
 ) -> DataLoader:
     _validate_max_history_length(max_history_length)
 
@@ -343,27 +446,37 @@ def build_history_training_loader(
         ordered_df = ordered_df.sort_values(["timestamp", "_row_order"], kind="stable")
 
     running_histories: Dict[str, List[int]] = {}
+    running_history_weights: Dict[str, List[float]] = {}
     example_histories: List[List[int]] = []
+    example_history_weights: List[List[float]] = []
     target_items: List[int] = []
 
     for row in ordered_df.itertuples(index=False):
         user_id = _standardize_id(row.visitorid)
         item_index = vocabs.item_to_idx.get(_standardize_id(row.itemid), 0)
         prior_history = list(running_histories.get(user_id, []))
+        prior_history_weights = list(running_history_weights.get(user_id, []))
         example_histories.append(prior_history)
+        example_history_weights.append(prior_history_weights)
         target_items.append(item_index)
 
         if item_index != 0:
             updated_history = prior_history + [item_index]
+            current_weight = _event_weight_for_value(getattr(row, "event", None), event_weights) if use_event_weights else 1.0
+            updated_history_weights = prior_history_weights + [current_weight]
             if max_history_length is not None:
                 updated_history = updated_history[-int(max_history_length):]
+                updated_history_weights = updated_history_weights[-int(max_history_length):]
             running_histories[user_id] = updated_history
+            running_history_weights[user_id] = updated_history_weights
         else:
             running_histories[user_id] = prior_history
+            running_history_weights[user_id] = prior_history_weights
 
     history_tensor = _history_to_padded_tensor(example_histories, max_history_length=max_history_length)
+    history_weight_tensor = _history_weights_to_padded_tensor(example_history_weights, max_history_length=max_history_length)
     item_tensor = torch.tensor(target_items, dtype=torch.long)
-    dataset = HistoryInteractionDataset(history_tensor, item_tensor)
+    dataset = HistoryInteractionDataset(history_tensor, history_weight_tensor, item_tensor)
     return DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=False)
 
 
@@ -421,11 +534,12 @@ def train_history_two_tower(
         model.train()
         running_loss = 0.0
         batches = 0
-        for batch_histories, batch_items in loader:
+        for batch_histories, batch_history_weights, batch_items in loader:
             batch_histories = batch_histories.to(device)
+            batch_history_weights = batch_history_weights.to(device)
             batch_items = batch_items.to(device)
 
-            logits = model.pairwise_logits(batch_histories, batch_items)
+            logits = model.pairwise_logits(batch_histories, batch_items, history_event_weights=batch_history_weights)
             labels = torch.arange(logits.shape[0], device=device)
             loss = loss_fn(logits, labels)
 
@@ -486,6 +600,7 @@ def recommend_top_k_for_history(
     model: HistoryQueryTwoTowerRetrievalModel,
     vocabs: Vocabularies,
     history_item_indices: torch.Tensor,
+    history_event_weights: Optional[torch.Tensor],
     k: int,
     item_embedding_matrix: Optional[torch.Tensor] = None,
     seen_items: Optional[Iterable] = None,
@@ -504,7 +619,12 @@ def recommend_top_k_for_history(
         history_tensor = history_item_indices.to(device)
         if history_tensor.ndim == 1:
             history_tensor = history_tensor.unsqueeze(0)
-        query_vector = model.encode_queries(history_tensor).squeeze(0)
+        weight_tensor = None
+        if history_event_weights is not None:
+            weight_tensor = history_event_weights.to(device)
+            if weight_tensor.ndim == 1:
+                weight_tensor = weight_tensor.unsqueeze(0)
+        query_vector = model.encode_queries(history_tensor, history_event_weights=weight_tensor).squeeze(0)
         scores = item_embedding_matrix @ query_vector
         scores[0] = float("-inf")
         for index in seen_indices:
