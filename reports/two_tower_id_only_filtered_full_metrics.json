@@ -1,0 +1,142 @@
+{
+  "baseline_comparison": {
+    "test": {
+      "10": {
+        "hit_rate_at_k": -0.007140730029553034,
+        "ndcg_at_k": -0.0035194097253147473,
+        "recall_at_k": -0.006757665993696725
+      },
+      "20": {
+        "hit_rate_at_k": -0.011176782832661481,
+        "ndcg_at_k": -0.0043938059978014515,
+        "recall_at_k": -0.010043687745425134
+      },
+      "5": {
+        "hit_rate_at_k": -0.005794126729991584,
+        "ndcg_at_k": -0.003053082534186753,
+        "recall_at_k": -0.005396631264052201
+      },
+      "50": {
+        "hit_rate_at_k": -0.020970245094006492,
+        "ndcg_at_k": -0.006063239651396546,
+        "recall_at_k": -0.018142672161753394
+      }
+    },
+    "validation": {
+      "10": {
+        "hit_rate_at_k": -0.005863725621372277,
+        "ndcg_at_k": -0.003117753240814314,
+        "recall_at_k": -0.0067654351252841825
+      },
+      "20": {
+        "hit_rate_at_k": -0.010956741275939624,
+        "ndcg_at_k": -0.004152502167868966,
+        "recall_at_k": -0.01070902614186586
+      },
+      "5": {
+        "hit_rate_at_k": -0.005011586418691184,
+        "ndcg_at_k": -0.002741316212739663,
+        "recall_at_k": -0.0055234844501044975
+      },
+      "50": {
+        "hit_rate_at_k": -0.021191257781090916,
+        "ndcg_at_k": -0.006064816002675442,
+        "recall_at_k": -0.019979691320211837
+      }
+    }
+  },
+  "config": {
+    "batch_size": 512,
+    "device": "cpu",
+    "embedding_dim": 32,
+    "epochs": 1,
+    "eval_user_limit": 10000,
+    "learning_rate": 0.001,
+    "min_item_interactions": 2,
+    "min_user_interactions": 2,
+    "train_limit": null,
+    "vocab_from_effective_train": true
+  },
+  "experiment": "two_tower_id_only",
+  "test": {
+    "coverage": {
+      "ground_truth_item_vocab_coverage": 0.7348255973633617,
+      "ground_truth_items_in_vocab_count": 10702,
+      "ground_truth_unique_item_count": 14564,
+      "known_item_coverage": 0.8032531517171424,
+      "known_item_row_count": 22173,
+      "known_user_count": 628,
+      "known_user_coverage": 0.0628
+    },
+    "metrics": {
+      "10": {
+        "hit_rate_at_k": 0.0007,
+        "ndcg_at_k": 0.00022104554586166146,
+        "recall_at_k": 0.0003064709649018804
+      },
+      "20": {
+        "hit_rate_at_k": 0.0016,
+        "ndcg_at_k": 0.00030072664946035623,
+        "recall_at_k": 0.0006265272064786101
+      },
+      "5": {
+        "hit_rate_at_k": 0.0003,
+        "ndcg_at_k": 0.00017325919413164442,
+        "recall_at_k": 0.00010222047496323477
+      },
+      "50": {
+        "hit_rate_at_k": 0.0029,
+        "ndcg_at_k": 0.0003846964145036231,
+        "recall_at_k": 0.001054555789386855
+      }
+    },
+    "num_users": 10000
+  },
+  "training_diagnostics": {
+    "min_item_interactions": 2,
+    "min_user_interactions": 2,
+    "model_items_in_vocab": 100648,
+    "model_users_in_vocab": 319045,
+    "train_rows_used": 1355957,
+    "unique_train_items_used": 100648,
+    "unique_train_users_used": 319045,
+    "vocab_from_effective_train": true
+  },
+  "training_loss_history": [
+    6.125339900290754
+  ],
+  "validation": {
+    "coverage": {
+      "ground_truth_item_vocab_coverage": 0.77576979217349,
+      "ground_truth_items_in_vocab_count": 11161,
+      "ground_truth_unique_item_count": 14387,
+      "known_item_coverage": 0.8506890440192426,
+      "known_item_row_count": 23519,
+      "known_user_count": 1088,
+      "known_user_coverage": 0.1088
+    },
+    "metrics": {
+      "10": {
+        "hit_rate_at_k": 0.0024,
+        "ndcg_at_k": 0.0006140250298016015,
+        "recall_at_k": 0.0007713273495193866
+      },
+      "20": {
+        "hit_rate_at_k": 0.0035,
+        "ndcg_at_k": 0.0007896236480098228,
+        "recall_at_k": 0.0013313288515853325
+      },
+      "5": {
+        "hit_rate_at_k": 0.0015,
+        "ndcg_at_k": 0.00047529965328260254,
+        "recall_at_k": 0.00045784715382112646
+      },
+      "50": {
+        "hit_rate_at_k": 0.0059,
+        "ndcg_at_k": 0.0009837773571881223,
+        "recall_at_k": 0.0022509667575927937
+      }
+    },
+    "num_users": 10000
+  }
+}

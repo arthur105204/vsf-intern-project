@@ -26,6 +26,12 @@ class TwoTowerConfig:
     weight_decay: float = 0.0
     seed: int = 42
     train_limit: Optional[int] = None
+    vocab_from_effective_train: bool = False
+    min_user_interactions: Optional[int] = None
+    min_item_interactions: Optional[int] = None
+    effective_train_rows: Optional[int] = None
+    effective_train_users: Optional[int] = None
+    effective_train_items: Optional[int] = None
     eval_user_limit: Optional[int] = 5000
     device: str = "cpu"
 
@@ -60,6 +66,25 @@ class Vocabularies:
 
 def _standardize_id(value) -> str:
     return str(value)
+
+
+def _validate_min_interactions(name: str, value: Optional[int]) -> None:
+    if value is not None and value <= 0:
+        raise ValueError(f"{name} must be positive when provided")
+
+
+def summarize_training_frame(train_df: pd.DataFrame) -> dict[str, int]:
+    if train_df.empty:
+        return {
+            "train_rows_used": 0,
+            "unique_train_users_used": 0,
+            "unique_train_items_used": 0,
+        }
+    return {
+        "train_rows_used": int(len(train_df)),
+        "unique_train_users_used": int(train_df["visitorid"].nunique()),
+        "unique_train_items_used": int(train_df["itemid"].nunique()),
+    }
 
 
 def build_vocabularies(train_df: pd.DataFrame) -> Vocabularies:
@@ -125,15 +150,37 @@ class TwoTowerRetrievalModel(nn.Module):
         return user_vectors @ item_vectors.T
 
 
-def _prepare_training_frame(train_df: pd.DataFrame, train_limit: Optional[int] = None) -> pd.DataFrame:
+def prepare_training_frame(
+    train_df: pd.DataFrame,
+    train_limit: Optional[int] = None,
+    min_user_interactions: Optional[int] = None,
+    min_item_interactions: Optional[int] = None,
+) -> pd.DataFrame:
+    _validate_min_interactions("min_user_interactions", min_user_interactions)
+    _validate_min_interactions("min_item_interactions", min_item_interactions)
+
     df = train_df.copy()
-    if train_limit is not None:
-        df = df.head(int(train_limit))
     required = {"visitorid", "itemid"}
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"train_df missing columns: {sorted(missing)}")
-    return df[["visitorid", "itemid"]].dropna().reset_index(drop=True)
+
+    df = df.dropna(subset=["visitorid", "itemid"]).reset_index(drop=True)
+    df["visitorid"] = df["visitorid"].map(_standardize_id)
+    df["itemid"] = df["itemid"].map(_standardize_id)
+
+    if min_user_interactions is not None and min_user_interactions > 1:
+        user_counts = df["visitorid"].value_counts()
+        df = df[df["visitorid"].map(user_counts) >= min_user_interactions]
+
+    if min_item_interactions is not None and min_item_interactions > 1:
+        item_counts = df["itemid"].value_counts()
+        df = df[df["itemid"].map(item_counts) >= min_item_interactions]
+
+    if train_limit is not None:
+        df = df.head(int(train_limit))
+
+    return df.reset_index(drop=True)
 
 
 def build_training_loader(
@@ -141,8 +188,15 @@ def build_training_loader(
     vocabs: Vocabularies,
     batch_size: int,
     train_limit: Optional[int] = None,
+    min_user_interactions: Optional[int] = None,
+    min_item_interactions: Optional[int] = None,
 ) -> DataLoader:
-    df = _prepare_training_frame(train_df, train_limit=train_limit)
+    df = prepare_training_frame(
+        train_df,
+        train_limit=train_limit,
+        min_user_interactions=min_user_interactions,
+        min_item_interactions=min_item_interactions,
+    )
     users, items = _encode_pairs(df, vocabs)
     dataset = InteractionDataset(users, items)
     return DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=False)
