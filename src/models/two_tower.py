@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import json
 
@@ -22,6 +22,7 @@ UNK_TOKEN = "<unk>"
 @dataclass(frozen=True)
 class TwoTowerConfig:
     query_tower: str = "id_only"
+    use_category_embeddings: bool = False
     embedding_dim: int = 64
     batch_size: int = 1024
     epochs: int = 1
@@ -177,15 +178,33 @@ class TwoTowerRetrievalModel(nn.Module):
 
 
 class HistoryQueryTwoTowerRetrievalModel(nn.Module):
-    def __init__(self, num_items: int, embedding_dim: int = 64):
+    def __init__(
+        self,
+        num_items: int,
+        embedding_dim: int = 64,
+        num_categories: Optional[int] = None,
+        item_category_indices: Optional[torch.Tensor] = None,
+        category_to_idx: Optional[Dict[str, int]] = None,
+    ):
         super().__init__()
         self.item_embedding = nn.Embedding(num_items, embedding_dim, padding_idx=0)
+        self.category_embedding: Optional[nn.Embedding] = None
+        self.category_to_idx = dict(category_to_idx or {})
+        if num_categories is not None:
+            self.category_embedding = nn.Embedding(num_categories, embedding_dim, padding_idx=0)
+            if item_category_indices is None:
+                raise ValueError("item_category_indices is required when num_categories is provided")
+            self.register_buffer("item_category_indices", item_category_indices.to(dtype=torch.long))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
         nn.init.normal_(self.item_embedding.weight, mean=0.0, std=0.02)
         with torch.no_grad():
             self.item_embedding.weight[0].zero_()
+        if self.category_embedding is not None:
+            nn.init.normal_(self.category_embedding.weight, mean=0.0, std=0.02)
+            with torch.no_grad():
+                self.category_embedding.weight[0].zero_()
 
     def aggregate_history(
         self,
@@ -210,7 +229,12 @@ class HistoryQueryTwoTowerRetrievalModel(nn.Module):
         return self.aggregate_history(history_item_indices, history_event_weights=history_event_weights)
 
     def encode_items(self, item_indices: torch.Tensor) -> torch.Tensor:
-        return self.item_embedding(item_indices)
+        item_vectors = self.item_embedding(item_indices)
+        if self.category_embedding is None:
+            return item_vectors
+        category_indices = self.item_category_indices[item_indices]
+        category_vectors = self.category_embedding(category_indices)
+        return item_vectors + category_vectors
 
     def forward(
         self,
@@ -272,6 +296,87 @@ def prepare_training_frame(
         df = df.head(int(train_limit))
 
     return df.reset_index(drop=True)
+
+
+def category_tree_ids_from_csv(path: Path) -> set[str]:
+    df = pd.read_csv(path)
+    if "categoryid" not in df.columns:
+        raise ValueError("category_tree csv must contain categoryid")
+    return set(df["categoryid"].dropna().astype(str).tolist())
+
+
+def build_item_category_map(
+    item_properties_paths: Sequence[Path],
+    item_ids: Optional[set[str]] = None,
+    category_ids: Optional[set[str]] = None,
+    max_timestamp_ms: Optional[int] = None,
+    chunksize: int = 500_000,
+) -> Dict[str, str]:
+    latest_by_item: Dict[str, Tuple[int, str]] = {}
+    item_id_filter = set(item_ids) if item_ids is not None else None
+    category_filter = set(category_ids) if category_ids is not None else None
+
+    for path in item_properties_paths:
+        for chunk in pd.read_csv(path, chunksize=chunksize):
+            required = {"timestamp", "itemid", "property", "value"}
+            missing = required - set(chunk.columns)
+            if missing:
+                raise ValueError(f"item properties csv missing columns: {sorted(missing)}")
+
+            category_chunk = chunk[chunk["property"].astype(str) == "categoryid"][["timestamp", "itemid", "value"]].copy()
+            if category_chunk.empty:
+                continue
+
+            category_chunk["itemid"] = category_chunk["itemid"].astype(str)
+            category_chunk["value"] = category_chunk["value"].astype(str)
+            category_chunk["timestamp"] = category_chunk["timestamp"].astype(int)
+
+            if item_id_filter is not None:
+                category_chunk = category_chunk[category_chunk["itemid"].isin(item_id_filter)]
+            if max_timestamp_ms is not None:
+                category_chunk = category_chunk[category_chunk["timestamp"] <= int(max_timestamp_ms)]
+            if category_filter is not None:
+                category_chunk = category_chunk[category_chunk["value"].isin(category_filter)]
+
+            if category_chunk.empty:
+                continue
+
+            category_chunk = category_chunk.sort_values(["itemid", "timestamp"], kind="stable")
+            latest = category_chunk.groupby("itemid", sort=False).tail(1)
+            for row in latest.itertuples(index=False):
+                previous = latest_by_item.get(row.itemid)
+                if previous is None or int(row.timestamp) >= previous[0]:
+                    latest_by_item[row.itemid] = (int(row.timestamp), str(row.value))
+
+    return {item_id: category_id for item_id, (_, category_id) in latest_by_item.items()}
+
+
+def build_category_vocab(item_category_map: Dict[str, str]) -> Dict[str, int]:
+    categories = sorted(set(item_category_map.values()))
+    return {category: index + 1 for index, category in enumerate(categories)}
+
+
+def build_item_category_index_tensor(
+    vocabs: Vocabularies,
+    item_category_map: Dict[str, str],
+    category_to_idx: Dict[str, int],
+) -> torch.Tensor:
+    item_category_indices = torch.zeros(vocabs.num_items, dtype=torch.long)
+    for item_id, item_index in vocabs.item_to_idx.items():
+        category_id = item_category_map.get(str(item_id))
+        if category_id is None:
+            continue
+        item_category_indices[item_index] = int(category_to_idx.get(str(category_id), 0))
+    return item_category_indices
+
+
+def count_items_with_categories(vocabs: Vocabularies, item_category_map: Dict[str, str]) -> int:
+    return sum(1 for item_id in vocabs.item_to_idx if str(item_id) in item_category_map)
+
+
+def timestamp_to_epoch_ms(value) -> int:
+    timestamp = pd.Timestamp(value)
+    return int(timestamp.value // 1_000_000)
 
 
 def count_users_with_non_empty_history(train_df: pd.DataFrame) -> int:
@@ -559,7 +664,9 @@ def build_item_embedding_matrix(model: TwoTowerRetrievalModel, device: str = "cp
     model = model.to(device)
     model.eval()
     with torch.no_grad():
-        return model.item_embedding.weight.detach().clone().to(device)
+        num_items = int(model.item_embedding.num_embeddings)
+        item_indices = torch.arange(num_items, dtype=torch.long, device=device)
+        return model.encode_items(item_indices).detach().clone()
 
 
 def recommend_top_k_for_user(
@@ -654,6 +761,11 @@ def save_checkpoint(
         "config": asdict(config),
         "history": history or [],
     }
+    if hasattr(model, "category_to_idx") and getattr(model, "category_embedding", None) is not None:
+        payload["category_features"] = {
+            "category_to_idx": dict(getattr(model, "category_to_idx", {})),
+            "item_category_indices": getattr(model, "item_category_indices").detach().cpu().tolist(),
+        }
     torch.save(payload, path)
 
 
@@ -665,7 +777,22 @@ def load_checkpoint(path: Path, map_location: str = "cpu") -> tuple[nn.Module, V
         item_to_idx={str(key): int(value) for key, value in payload["vocabs"]["item_to_idx"].items()},
     )
     if config.query_tower == "history":
-        model = HistoryQueryTwoTowerRetrievalModel(vocabs.num_items, embedding_dim=config.embedding_dim)
+        category_features = payload.get("category_features")
+        if config.use_category_embeddings:
+            if not category_features:
+                raise ValueError("checkpoint missing category_features for category-aware history model")
+            category_to_idx = {str(key): int(value) for key, value in category_features["category_to_idx"].items()}
+            item_category_indices = torch.tensor(category_features["item_category_indices"], dtype=torch.long)
+            num_categories = max(category_to_idx.values(), default=0) + 1
+            model = HistoryQueryTwoTowerRetrievalModel(
+                vocabs.num_items,
+                embedding_dim=config.embedding_dim,
+                num_categories=num_categories,
+                item_category_indices=item_category_indices,
+                category_to_idx=category_to_idx,
+            )
+        else:
+            model = HistoryQueryTwoTowerRetrievalModel(vocabs.num_items, embedding_dim=config.embedding_dim)
     else:
         model = TwoTowerRetrievalModel(vocabs.num_users, vocabs.num_items, embedding_dim=config.embedding_dim)
     model.load_state_dict(payload["model_state_dict"])
