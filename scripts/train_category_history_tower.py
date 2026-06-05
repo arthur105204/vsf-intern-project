@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -65,6 +68,12 @@ def write_training_report(path: Path, summary: dict, history: list[float]) -> No
         f.write(f"- Training loss history: {history}\n")
 
 
+def set_global_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", default="data/processed/splits/train.parquet")
@@ -89,6 +98,8 @@ def main():
     parser.add_argument("--use_event_weights_in_history", action="store_true")
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
+
+    set_global_seed(args.seed)
 
     train_df = load_split(Path(args.train))
     effective_train_df = prepare_training_frame(

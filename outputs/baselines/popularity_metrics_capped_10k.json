@@ -1,0 +1,107 @@
+{
+  "baseline": "popularity",
+  "eval_user_limit": 10000,
+  "event_weights": {
+    "addtocart": 3.0,
+    "transaction": 5.0,
+    "view": 1.0
+  },
+  "test": {
+    "metrics": {
+      "10": {
+        "hit_rate_at_k": 0.0074,
+        "ndcg_at_k": 0.0032884699085442845,
+        "recall_at_k": 0.006010251978299379
+      },
+      "20": {
+        "hit_rate_at_k": 0.0132,
+        "ndcg_at_k": 0.0043389050556617795,
+        "recall_at_k": 0.009975169408161807
+      },
+      "5": {
+        "hit_rate_at_k": 0.0055,
+        "ndcg_at_k": 0.002884364061081983,
+        "recall_at_k": 0.00488384380378397
+      },
+      "50": {
+        "hit_rate_at_k": 0.0283,
+        "ndcg_at_k": 0.006574913252982059,
+        "recall_at_k": 0.020517164023578213
+      }
+    },
+    "num_users": 10000
+  },
+  "train_summary": {
+    "num_items": 212915,
+    "num_rows": 2204880,
+    "num_users": 1123767,
+    "top_items": [
+      {
+        "item_id": "461686",
+        "score": 2827.0
+      },
+      {
+        "item_id": "5411",
+        "score": 2165.0
+      },
+      {
+        "item_id": "257040",
+        "score": 1899.0
+      },
+      {
+        "item_id": "187946",
+        "score": 1831.0
+      },
+      {
+        "item_id": "309778",
+        "score": 1772.0
+      },
+      {
+        "item_id": "370653",
+        "score": 1625.0
+      },
+      {
+        "item_id": "7943",
+        "score": 1576.0
+      },
+      {
+        "item_id": "369447",
+        "score": 1488.0
+      },
+      {
+        "item_id": "298009",
+        "score": 1453.0
+      },
+      {
+        "item_id": "48030",
+        "score": 1443.0
+      }
+    ]
+  },
+  "validation": {
+    "metrics": {
+      "10": {
+        "hit_rate_at_k": 0.0103,
+        "ndcg_at_k": 0.0042869007596528326,
+        "recall_at_k": 0.00897367955984153
+      },
+      "20": {
+        "hit_rate_at_k": 0.0175,
+        "ndcg_at_k": 0.005596667099820069,
+        "recall_at_k": 0.013631194682326002
+      },
+      "5": {
+        "hit_rate_at_k": 0.0072,
+        "ndcg_at_k": 0.0035228975530854738,
+        "recall_at_k": 0.006634512893174864
+      },
+      "50": {
+        "hit_rate_at_k": 0.0287,
+        "ndcg_at_k": 0.007361460665195766,
+        "recall_at_k": 0.02204920657752607
+      }
+    },
+    "num_users": 10000
+  },
+  "weighted_events": true
+}

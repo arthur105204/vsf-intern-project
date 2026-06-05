@@ -49,8 +49,14 @@ def _per_user_ndcg(truth_items, predicted_items):
     return gains / ideal_dcg
 
 
-def evaluate_split(model, split_df: pd.DataFrame, train_seen_items_by_user, ks):
+def _subset_users(users: list[str], limit: int | None) -> list[str]:
+    return users if limit is None else users[:limit]
+
+
+def evaluate_split(model, split_df: pd.DataFrame, train_seen_items_by_user, ks, eval_user_limit: int | None = None):
     ground_truth = build_ground_truth(split_df, positive_events=("view", "addtocart", "transaction"))
+    eval_user_ids = _subset_users(list(ground_truth.keys()), eval_user_limit)
+    ground_truth = {user_id: ground_truth[user_id] for user_id in eval_user_ids if user_id in ground_truth}
 
     metrics = {
         str(k): {"recall_sum": 0.0, "hit_sum": 0.0, "ndcg_sum": 0.0}
@@ -98,6 +104,7 @@ def main():
     parser.add_argument("--out_json", default="outputs/baselines/popularity_metrics.json")
     parser.add_argument("--out_report", default="reports/popularity_baseline.md")
     parser.add_argument("--k_values", nargs="*", type=int, default=[5, 10, 20, 50])
+    parser.add_argument("--eval_user_limit", type=int, default=None)
     args = parser.parse_args()
 
     print("Loading splits...", flush=True)
@@ -130,14 +137,15 @@ def main():
     }
 
     print("Evaluating validation split...", flush=True)
-    val_results = evaluate_split(model, val_df, train_seen_items_by_user, args.k_values)
+    val_results = evaluate_split(model, val_df, train_seen_items_by_user, args.k_values, args.eval_user_limit)
     print("Evaluating test split...", flush=True)
-    test_results = evaluate_split(model, test_df, train_seen_items_by_user, args.k_values)
+    test_results = evaluate_split(model, test_df, train_seen_items_by_user, args.k_values, args.eval_user_limit)
 
     payload = {
         "baseline": "popularity",
         "weighted_events": True,
         "event_weights": model.event_weights,
+        "eval_user_limit": args.eval_user_limit,
         "train_summary": train_summary,
         "validation": val_results,
         "test": test_results,
@@ -152,6 +160,13 @@ def main():
         f.write("# Popularity Baseline\n\n")
         f.write("This baseline uses weighted item popularity from the train split only.\n\n")
         f.write("Event weights: view=1.0, addtocart=3.0, transaction=5.0.\n\n")
+        if args.eval_user_limit is None:
+            f.write("Evaluation protocol: full validation/test user set.\n\n")
+        else:
+            f.write(
+                "Evaluation protocol: capped to the first "
+                f"{args.eval_user_limit} evaluable users per split, matching the learned-model capped evaluation protocol.\n\n"
+            )
         f.write("## Validation metrics\n\n")
         for k, metrics in val_results["metrics"].items():
             f.write(
